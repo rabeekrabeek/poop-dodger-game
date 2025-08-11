@@ -19,7 +19,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1 style="margin:8px 0 12px 0;">اهرب من البراز 💩 (أوفلاين)</h1>
+  <h1 style="margin:8px 0 12px 0;">اهرب من البراز 💩</h1>
   <div class="card">
     <canvas id="game"></canvas>
     <div class="row" style="margin-top:8px;">
@@ -35,21 +35,16 @@
       <input id="uploader" type="file" accept="image/*"/>
     </div>
   </div>
-  <p style="opacity:.7;font-size:12px;margin-top:10px;">
-    تلميحات: اضغط ابدأ، ثم استخدم أزرار اليمين/اليسار (أو أسهم الكيبورد).
-    كل إصابة = ضحكة وخسارة قلب. بعد 3 إصابات تنتهي اللعبة. كل 10 تفادٍ = مستوى جديد.
+  <p style="opacity:.7;font-size:12px;margin-top:10px">
+    اضغط ابدأ ثم تحرّك يمين/يسار. كل إصابة = ضحكة وخسارة قلب. بعد 3 إصابات بتنتهي اللعبة. كل 10 تفادٍ = مستوى جديد أسرع.
   </p>
 </div>
 
 <script>
 (function(){
-  const canvas = document.getElementById('game');
-  const ctx = canvas.getContext('2d');
-  const statusEl = document.getElementById('status');
-  const startBtn = document.getElementById('start');
-  const btnLeft  = document.getElementById('btnLeft');
-  const btnRight = document.getElementById('btnRight');
-  const uploader = document.getElementById('uploader');
+  const $ = (id)=>document.getElementById(id);
+  const canvas = $('game'), ctx = canvas.getContext('2d');
+  const statusEl=$('status'), startBtn=$('start'), btnLeft=$('btnLeft'), btnRight=$('btnRight'), uploader=$('uploader');
 
   const S = {
     running:false, gameOver:false,
@@ -62,22 +57,16 @@
     audioCtx:null, topImage:null
   };
 
-  function ensureAudio(){
-    if(!S.audioCtx){
-      S.audioCtx = new (window.AudioContext||window.webkitAudioContext)();
-    }
-    return S.audioCtx;
-  }
+  // صوت ضحكة تركيبية قريبة من "الزعيم"
+  function ensureAudio(){ if(!S.audioCtx){ S.audioCtx=new (window.AudioContext||window.webkitAudioContext)(); } return S.audioCtx; }
   function playLaugh(){
-    const a = ensureAudio();
-    const now = a.currentTime + 0.02;
-    const steps = [480,420,380,340,300];
+    const a=ensureAudio(); const now=a.currentTime+0.02;
+    const steps=[480,420,380,340,300];
     steps.forEach((f,i)=>{
       const osc=a.createOscillator(), g=a.createGain();
       const hpf=a.createBiquadFilter(); hpf.type="highpass"; hpf.frequency.value=220;
-      const lpf=a.createBiquadFilter(); lpf.type="lowpass"; lpf.frequency.value=2000;
-      osc.type="square";
-      osc.frequency.setValueAtTime(f, now+i*0.18);
+      const lpf=a.createBiquadFilter(); lpf.type="lowpass";  lpf.frequency.value=2000;
+      osc.type="square"; osc.frequency.setValueAtTime(f, now+i*0.18);
       g.gain.setValueAtTime(0.0001, now+i*0.18);
       g.gain.exponentialRampToValueAtTime(0.35, now+i*0.18+0.03);
       g.gain.exponentialRampToValueAtTime(0.0001, now+i*0.18+0.15);
@@ -90,13 +79,10 @@
     const dpr=Math.min(window.devicePixelRatio||1,2);
     const width=Math.min(canvas.parentElement.clientWidth,420);
     const height=Math.round(width*1.7);
-    canvas.width=Math.floor(width*dpr);
-    canvas.height=Math.floor(height*dpr);
-    canvas.style.width=width+'px';
-    canvas.style.height=height+'px';
+    canvas.width=Math.floor(width*dpr); canvas.height=Math.floor(height*dpr);
+    canvas.style.width=width+'px'; canvas.style.height=height+'px';
     S.dpr=dpr; S.w=canvas.width; S.h=canvas.height;
-    S.player.y=canvas.height-40*dpr;
-    S.top.y=50*dpr; S.top.x=canvas.width/2;
+    S.player.y=canvas.height-40*dpr; S.top.y=50*dpr; S.top.x=canvas.width/2;
   }
   window.addEventListener('resize', resize); resize();
 
@@ -109,18 +95,24 @@
   function endGame(){ S.running=false; S.gameOver=true; S.message='انتهت اللعبة — اضغط ابدأ'; }
   function levelUp(){ S.level+=1; S.message='المستوى '+S.level+'! أسرع وأصعب 🚀'; S.spawnEvery=Math.max(300,S.spawnEvery-90); }
 
+  // رفع صورة للشخص العلوي (اختياري)
+  uploader.addEventListener('change', e=>{
+    const f=e.target.files && e.target.files[0]; if(!f) return;
+    const url=URL.createObjectURL(f); const img=new Image();
+    img.onload=()=>S.topImage=img; img.src=url;
+  });
+
+  // أزرار لمس مستمرة
   const input={left:false,right:false};
   function bindHold(el,side){
-    const on = ()=> input[side]=true;
-    const off= ()=> input[side]=false;
+    const on = ()=> input[side]=true, off=()=> input[side]=false;
     el.addEventListener('touchstart',e=>{e.preventDefault();on();});
     el.addEventListener('touchend',e=>{e.preventDefault();off();});
-    el.addEventListener('mousedown',on);
-    el.addEventListener('mouseup',off);
-    el.addEventListener('mouseleave',off);
+    el.addEventListener('mousedown',on); el.addEventListener('mouseup',off); el.addEventListener('mouseleave',off);
   }
   bindHold(btnLeft,'left'); bindHold(btnRight,'right');
 
+  // كيبورد
   window.addEventListener('keydown',e=>{
     if(e.key==='ArrowLeft'||e.key==='a') input.left=true;
     if(e.key==='ArrowRight'||e.key==='d') input.right=true;
@@ -130,14 +122,7 @@
     if(e.key==='ArrowLeft'||e.key==='a') input.left=false;
     if(e.key==='ArrowRight'||e.key==='d') input.right=false;
   });
-
   startBtn.addEventListener('click', startGame);
-
-  uploader.addEventListener('change', e=>{
-    const f=e.target.files&&e.target.files[0]; if(!f) return;
-    const url=URL.createObjectURL(f);
-    const img=new Image(); img.onload=()=>S.topImage=img; img.src=url;
-  });
 
   function loop(t){
     if(!S.lastTime) S.lastTime=t;
@@ -157,15 +142,18 @@
     ctx.fillText('القلوب: '+('❤'.repeat(S.lives)), S.w-130*S.dpr, 22*S.dpr);
     if(!S.running) ctx.fillText(S.message, 12*S.dpr, 62*S.dpr);
 
-    // رسم الشخص فوق
+    // وجه فوق
     const topX=S.top.x, topY=S.top.y;
     if(S.topImage){
       const imgW=80*S.dpr, imgH=80*S.dpr;
       ctx.drawImage(S.topImage, topX-imgW/2, topY-imgH/2, imgW, imgH);
     }else{
       ctx.beginPath(); ctx.fillStyle='#fcd34d'; ctx.arc(topX, topY, 36*S.dpr, 0, Math.PI*2); ctx.fill();
-      ctx.fillStyle='#111827'; ctx.beginPath(); ctx.arc(topX-12*S.dpr, topY-6*S.dpr, 4*S.dpr, 0, Math.PI*2); ctx.arc(topX+12*S.dpr, topY-6*S.dpr, 4*S.dpr, 0, Math.PI*2); ctx.fill();
-      ctx.strokeStyle='#111827'; ctx.lineWidth=2*S.dpr; ctx.beginPath(); ctx.arc(topX, topY+8*S.dpr, 12*S.dpr, 0, Math.PI); ctx.stroke();
+      ctx.fillStyle='#111827';
+      ctx.beginPath(); ctx.arc(topX-12*S.dpr, topY-6*S.dpr, 4*S.dpr, 0, Math.PI*2);
+      ctx.arc(topX+12*S.dpr, topY-6*S.dpr, 4*S.dpr, 0, Math.PI*2); ctx.fill();
+      ctx.strokeStyle='#111827'; ctx.lineWidth=2*S.dpr;
+      ctx.beginPath(); ctx.arc(topX, topY+8*S.dpr, 12*S.dpr, 0, Math.PI); ctx.stroke();
     }
     if(S.laugh){ ctx.font=(24*S.dpr)+'px sans-serif'; ctx.fillStyle='#fbbf24'; ctx.fillText('😂', topX+40*S.dpr, topY-20*S.dpr); }
 
