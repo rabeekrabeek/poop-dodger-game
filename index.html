@@ -1,0 +1,215 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
+<title>اهرب من البراز 💩 (أوفلاين)</title>
+<style>
+  body{background:#0a0f1a;color:#e2e8f0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;margin:0}
+  .wrap{max-width:520px;margin:0 auto;padding:16px}
+  .card{background:#0e1320;border-radius:16px;box-shadow:0 8px 24px rgba(0,0,0,.35);padding:12px}
+  .btn{background:#0ea5e9;color:#fff;border:none;border-radius:14px;padding:10px 16px;font-weight:700;cursor:pointer}
+  .btn:active{transform:translateY(1px)}
+  .row{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .control{background:#1f2937;color:#fff;border-radius:14px;padding:16px;font-size:18px;text-align:center;user-select:none}
+  canvas{display:block;background:#000;border-radius:16px;width:100%;height:auto;touch-action:none}
+  label,input,small{color:#94a3b8}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1 style="margin:8px 0 12px 0;">اهرب من البراز 💩 (أوفلاين)</h1>
+  <div class="card">
+    <canvas id="game"></canvas>
+    <div class="row" style="margin-top:8px;">
+      <button id="start" class="btn">ابدأ</button>
+      <span id="status" style="color:#cbd5e1"></span>
+    </div>
+    <div class="grid2" style="margin-top:8px;">
+      <div id="btnLeft"  class="control">◀ يسار</div>
+      <div id="btnRight" class="control">يمين ▶</div>
+    </div>
+    <div style="margin-top:10px;font-size:12px;">
+      <label class="block">حمّل صورة للشخص العلوي (اختياري):</label>
+      <input id="uploader" type="file" accept="image/*"/>
+    </div>
+  </div>
+  <p style="opacity:.7;font-size:12px;margin-top:10px;">
+    تلميحات: اضغط ابدأ، ثم استخدم أزرار اليمين/اليسار (أو أسهم الكيبورد).
+    كل إصابة = ضحكة وخسارة قلب. بعد 3 إصابات تنتهي اللعبة. كل 10 تفادٍ = مستوى جديد.
+  </p>
+</div>
+
+<script>
+(function(){
+  const canvas = document.getElementById('game');
+  const ctx = canvas.getContext('2d');
+  const statusEl = document.getElementById('status');
+  const startBtn = document.getElementById('start');
+  const btnLeft  = document.getElementById('btnLeft');
+  const btnRight = document.getElementById('btnRight');
+  const uploader = document.getElementById('uploader');
+
+  const S = {
+    running:false, gameOver:false,
+    score:0, level:1, lives:3, message:'اضغط ابدأ',
+    dpr:1, w:360, h:600,
+    lastTime:0, lastSpawn:0, spawnEvery:900,
+    player:{x:180,y:560,w:36,h:18,speed:260},
+    top:{x:180,y:50},
+    poops:[], laugh:false,
+    audioCtx:null, topImage:null
+  };
+
+  function ensureAudio(){
+    if(!S.audioCtx){
+      S.audioCtx = new (window.AudioContext||window.webkitAudioContext)();
+    }
+    return S.audioCtx;
+  }
+  function playLaugh(){
+    const a = ensureAudio();
+    const now = a.currentTime + 0.02;
+    const steps = [480,420,380,340,300];
+    steps.forEach((f,i)=>{
+      const osc=a.createOscillator(), g=a.createGain();
+      const hpf=a.createBiquadFilter(); hpf.type="highpass"; hpf.frequency.value=220;
+      const lpf=a.createBiquadFilter(); lpf.type="lowpass"; lpf.frequency.value=2000;
+      osc.type="square";
+      osc.frequency.setValueAtTime(f, now+i*0.18);
+      g.gain.setValueAtTime(0.0001, now+i*0.18);
+      g.gain.exponentialRampToValueAtTime(0.35, now+i*0.18+0.03);
+      g.gain.exponentialRampToValueAtTime(0.0001, now+i*0.18+0.15);
+      osc.connect(hpf); hpf.connect(lpf); lpf.connect(g); g.connect(a.destination);
+      osc.start(now+i*0.18); osc.stop(now+i*0.18+0.18);
+    });
+  }
+
+  function resize(){
+    const dpr=Math.min(window.devicePixelRatio||1,2);
+    const width=Math.min(canvas.parentElement.clientWidth,420);
+    const height=Math.round(width*1.7);
+    canvas.width=Math.floor(width*dpr);
+    canvas.height=Math.floor(height*dpr);
+    canvas.style.width=width+'px';
+    canvas.style.height=height+'px';
+    S.dpr=dpr; S.w=canvas.width; S.h=canvas.height;
+    S.player.y=canvas.height-40*dpr;
+    S.top.y=50*dpr; S.top.x=canvas.width/2;
+  }
+  window.addEventListener('resize', resize); resize();
+
+  function startGame(){
+    ensureAudio();
+    S.poops=[]; S.lastSpawn=0; S.lastTime=0; S.spawnEvery=900;
+    S.score=0; S.level=1; S.lives=3; S.message='تهرّب واحصل على نقاط!';
+    S.gameOver=false; S.laugh=false; S.running=true;
+  }
+  function endGame(){ S.running=false; S.gameOver=true; S.message='انتهت اللعبة — اضغط ابدأ'; }
+  function levelUp(){ S.level+=1; S.message='المستوى '+S.level+'! أسرع وأصعب 🚀'; S.spawnEvery=Math.max(300,S.spawnEvery-90); }
+
+  const input={left:false,right:false};
+  function bindHold(el,side){
+    const on = ()=> input[side]=true;
+    const off= ()=> input[side]=false;
+    el.addEventListener('touchstart',e=>{e.preventDefault();on();});
+    el.addEventListener('touchend',e=>{e.preventDefault();off();});
+    el.addEventListener('mousedown',on);
+    el.addEventListener('mouseup',off);
+    el.addEventListener('mouseleave',off);
+  }
+  bindHold(btnLeft,'left'); bindHold(btnRight,'right');
+
+  window.addEventListener('keydown',e=>{
+    if(e.key==='ArrowLeft'||e.key==='a') input.left=true;
+    if(e.key==='ArrowRight'||e.key==='d') input.right=true;
+    if(e.key===' '&&!S.running) startGame();
+  });
+  window.addEventListener('keyup',e=>{
+    if(e.key==='ArrowLeft'||e.key==='a') input.left=false;
+    if(e.key==='ArrowRight'||e.key==='d') input.right=false;
+  });
+
+  startBtn.addEventListener('click', startGame);
+
+  uploader.addEventListener('change', e=>{
+    const f=e.target.files&&e.target.files[0]; if(!f) return;
+    const url=URL.createObjectURL(f);
+    const img=new Image(); img.onload=()=>S.topImage=img; img.src=url;
+  });
+
+  function loop(t){
+    if(!S.lastTime) S.lastTime=t;
+    const dt=Math.min((t-S.lastTime)/1000,0.033); S.lastTime=t;
+
+    // خلفية
+    ctx.clearRect(0,0,S.w,S.h);
+    ctx.fillStyle='#0e1320'; ctx.fillRect(0,0,S.w,S.h);
+    ctx.globalAlpha=0.15;
+    for(let i=0;i<70;i++){ ctx.fillStyle='#fff'; const sx=(i*53)%S.w; const sy=((i*97+t*0.06)%S.h); ctx.fillRect(sx,sy,2*S.dpr,2*S.dpr); }
+    ctx.globalAlpha=1;
+
+    // HUD
+    ctx.fillStyle='#e2e8f0'; ctx.font=(14*S.dpr)+'px sans-serif';
+    ctx.fillText('المستوى: '+S.level, 12*S.dpr, 22*S.dpr);
+    ctx.fillText('النقاط: '+S.score, 12*S.dpr, 42*S.dpr);
+    ctx.fillText('القلوب: '+('❤'.repeat(S.lives)), S.w-130*S.dpr, 22*S.dpr);
+    if(!S.running) ctx.fillText(S.message, 12*S.dpr, 62*S.dpr);
+
+    // رسم الشخص فوق
+    const topX=S.top.x, topY=S.top.y;
+    if(S.topImage){
+      const imgW=80*S.dpr, imgH=80*S.dpr;
+      ctx.drawImage(S.topImage, topX-imgW/2, topY-imgH/2, imgW, imgH);
+    }else{
+      ctx.beginPath(); ctx.fillStyle='#fcd34d'; ctx.arc(topX, topY, 36*S.dpr, 0, Math.PI*2); ctx.fill();
+      ctx.fillStyle='#111827'; ctx.beginPath(); ctx.arc(topX-12*S.dpr, topY-6*S.dpr, 4*S.dpr, 0, Math.PI*2); ctx.arc(topX+12*S.dpr, topY-6*S.dpr, 4*S.dpr, 0, Math.PI*2); ctx.fill();
+      ctx.strokeStyle='#111827'; ctx.lineWidth=2*S.dpr; ctx.beginPath(); ctx.arc(topX, topY+8*S.dpr, 12*S.dpr, 0, Math.PI); ctx.stroke();
+    }
+    if(S.laugh){ ctx.font=(24*S.dpr)+'px sans-serif'; ctx.fillStyle='#fbbf24'; ctx.fillText('😂', topX+40*S.dpr, topY-20*S.dpr); }
+
+    // تشغيل
+    if(S.running){
+      const sp=S.player.speed*S.dpr;
+      if(input.left)  S.player.x-=sp*dt;
+      if(input.right) S.player.x+=sp*dt;
+      S.player.x=Math.max(18*S.dpr, Math.min(S.w-18*S.dpr, S.player.x));
+
+      if(t - S.lastSpawn > S.spawnEvery){
+        S.lastSpawn=t;
+        const x=(S.w*0.2)+Math.random()*(S.w*0.6);
+        const r=14*S.dpr; const vy=(120+S.level*30)*S.dpr;
+        S.poops.push({x,y:topY+30*S.dpr,r,vy});
+      }
+
+      for(let i=S.poops.length-1;i>=0;i--){
+        const p=S.poops[i]; p.y+=p.vy*dt;
+        const px=S.player.x, py=S.player.y, pw=S.player.w*S.dpr, ph=S.player.h*S.dpr;
+        const withinX = p.x > (px - pw/2) && p.x < (px + pw/2);
+        const hit = withinX && (p.y + p.r > py - ph/2);
+        if(hit){
+          S.poops.splice(i,1);
+          S.laugh=true; playLaugh(); setTimeout(()=>S.laugh=false,700);
+          S.lives-=1; if(S.lives<=0) setTimeout(endGame,250);
+          continue;
+        }
+        if(p.y - p.r > S.h){ S.poops.splice(i,1); S.score+=1; if(S.score%10===0) levelUp(); }
+      }
+    }
+
+    // اللاعب
+    const px=S.player.x, py=S.player.y, pw=S.player.w*S.dpr, ph=S.player.h*S.dpr;
+    ctx.fillStyle='#22d3ee'; ctx.fillRect(px - pw/2, py - ph/2, pw, ph);
+
+    // البراز
+    for(const p of S.poops){ ctx.font=(20*S.dpr)+'px serif'; ctx.fillText('💩', p.x - 10*S.dpr, p.y + 8*S.dpr); }
+
+    statusEl.textContent = (!S.running && !S.gameOver) ? S.message : (S.gameOver ? ('انتهت اللعبة! مجموعك: '+S.score) : '');
+    requestAnimationFrame(loop);
+  }
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
